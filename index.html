@@ -4,6 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Infinity Chat</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#070b12">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
 <style>
 :root{--bg:radial-gradient(circle at top,#12354b,#070b12 55%);--card:rgba(255,255,255,.055);--bd:rgba(150,235,255,.15);--blur:blur(20px)}
 body[data-theme=dark]{--bg:#090d13;--card:#121a25;--bd:#1f2c3b;--blur:none}
@@ -373,5 +378,6 @@ $("saveBtn").onclick = async () => {
   }catch(e){ $("setMsg").textContent = e.code || e.message; }
 };
 </script>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));}</script>
 </body>
-  </html>
+</html>
