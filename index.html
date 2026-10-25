@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Infinity Chat</title>
+<style>
+:root{--bg:radial-gradient(circle at top,#12354b,#070b12 55%);--card:rgba(255,255,255,.055);--bd:rgba(150,235,255,.15);--blur:blur(20px)}
+body[data-theme=dark]{--bg:#090d13;--card:#121a25;--bd:#1f2c3b;--blur:none}
+body[data-theme=blue]{--bg:linear-gradient(160deg,#0b3a9e,#050f2b 70%);--card:rgba(47,128,255,.14);--bd:rgba(120,180,255,.3)}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:Arial,sans-serif;color:#f4fbff;background:var(--bg) fixed}
+.hidden{display:none!important}
+.app{max-width:480px;margin:auto;padding:22px 17px}
+.logo{font-size:25px;font-weight:bold;letter-spacing:-1px}
+.logo span,.cyan{color:#35eaff}
+.muted{color:#91a7b7;font-size:14px}
+.glass{background:var(--card);border:1px solid var(--bd);backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);border-radius:22px;box-shadow:0 10px 35px #0003}
+input,textarea{width:100%;padding:15px;margin:0 0 12px;background:#ffffff0d;border:1px solid #ffffff1a;border-radius:16px;color:#fff;font-size:15px;font-family:inherit;outline:none}
+input:focus,textarea:focus{border-color:#35eaff88}
+button{cursor:pointer;font-family:inherit}
+.btn{width:100%;padding:15px;margin-bottom:10px;border:0;border-radius:16px;background:linear-gradient(135deg,#35eaff,#2f80ff);color:#071019;font-size:15px;font-weight:bold}
+.btn.ghost{background:#35eaff12;border:1px solid #35eaff55;color:#35eaff}
+.err{color:#ff8a9b;font-size:13px;min-height:18px;margin:4px 0 0}
+.box{padding:22px;margin-top:22px}
+header{display:flex;align-items:center;justify-content:space-between}
+.icon{width:43px;height:43px;border-radius:15px;border:1px solid #35eaff44;background:#35eaff12;color:#35eaff;font-size:20px}
+.welcome{margin:24px 0 16px}
+.welcome h1{font-size:28px;margin:0 0 6px}
+.chat{display:flex;align-items:center;gap:13px;padding:13px 12px;margin-bottom:10px;cursor:pointer}
+.avatar{width:50px;height:50px;border-radius:18px;flex-shrink:0;position:relative;background:linear-gradient(135deg,#164b60,#101723);border:1px solid #35eaff66;display:grid;place-items:center;font-size:21px;font-weight:bold;color:#35eaff}
+.avatar img{width:100%;height:100%;object-fit:cover;border-radius:inherit}
+.avatar.sm{width:40px;height:40px;border-radius:14px;font-size:17px}
+.avatar.big{width:96px;height:96px;border-radius:30px;font-size:38px;margin:0 auto 18px;cursor:pointer}
+.dot{position:absolute;right:-3px;bottom:-3px;width:12px;height:12px;background:#3cffac;border:2px solid #0a121b;border-radius:50%}
+.name{font-weight:bold;margin-bottom:4px}
+.empty{padding:18px;text-align:center}
+#chatView{display:flex;flex-direction:column;height:calc(100dvh - 44px)}
+.chathead{display:flex;align-items:center;gap:12px;padding:10px 14px}
+#chatStatus{font-size:12px;color:#35eaff}
+#msgs{flex:1;overflow-y:auto;padding:14px 2px;display:flex;flex-direction:column;gap:8px}
+.msg{max-width:78%;padding:9px 13px;border-radius:18px;font-size:15px;line-height:1.4;word-wrap:break-word;white-space:pre-wrap}
+.msg small{display:block;font-size:10px;color:#ffffff88;text-align:right;margin-top:3px}
+.msg img{display:block;max-width:100%;border-radius:12px}
+.msg.mine{align-self:flex-end;background:linear-gradient(135deg,#35eaff33,#2f80ff55);border:1px solid #35eaff55;border-bottom-right-radius:6px}
+.msg.theirs{align-self:flex-start;background:rgba(255,255,255,.07);border:1px solid #ffffff1a;border-bottom-left-radius:6px}
+#sendForm{display:flex;gap:8px;align-items:center;padding:8px}
+#sendForm input{margin:0;flex:1}
+#sendForm button{width:46px;height:46px;border:0;border-radius:16px;background:linear-gradient(135deg,#35eaff,#2f80ff);color:#071019;font-size:19px}
+#sendForm #camBtn{background:#35eaff12;border:1px solid #35eaff55;color:#35eaff}
+.chips{display:flex;gap:8px;margin:0 0 18px}
+.chip{flex:1;padding:12px;border-radius:14px;border:1px solid #ffffff22;background:#ffffff0d;color:#fff;font-size:14px}
+.chip.on{border-color:#35eaff;color:#35eaff}
+label{display:block;font-size:13px;color:#91a7b7;margin:0 0 6px 2px}
+@media (prefers-reduced-motion:no-preference){.msg{animation:pop .18s ease-out}@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <section id="authView">
+    <div class="logo">∞ INFINITY<span> CHAT</span></div>
+    <p class="muted">Your private space</p>
+    <div class="glass box">
+      <input id="nameIn" placeholder="Your name (for new account)">
+      <input id="emailIn" type="email" placeholder="Email">
+      <input id="passIn" type="password" placeholder="Password (6+ characters)">
+      <button class="btn" id="loginBtn">Log in</button>
+      <button class="btn ghost" id="signupBtn">Create account</button>
+      <p class="err" id="authMsg"></p>
+    </div>
+  </section>
+
+  <section id="homeView" class="hidden">
+    <header>
+      <div class="logo">∞ INFINITY<span> CHAT</span></div>
+      <button class="icon" id="settingsBtn" title="Settings">⚙</button>
+    </header>
+    <div class="welcome">
+      <h1 id="hello">Stay connected</h1>
+      <p class="muted">Pick a friend to start chatting.</p>
+    </div>
+    <input id="search" placeholder="Search friends...">
+    <div id="users"></div>
+  </section>
+
+  <section id="setView" class="hidden">
+    <header>
+      <button class="icon" id="setBack">←</button>
+      <b>Profile settings</b>
+      <span style="width:43px"></span>
+    </header>
+    <div class="glass box">
+      <div id="setAv"></div>
+      <p class="muted" style="text-align:center;margin-top:-6px">Tap the picture to change it</p>
+      <input id="photoIn" type="file" accept="image/*" class="hidden">
+      <label>Name</label>
+      <input id="setName" maxlength="30">
+      <label>Bio</label>
+      <textarea id="setBio" rows="2" maxlength="80"></textarea>
+      <label>Theme</label>
+      <div class="chips">
+        <button class="chip" data-t="glass">Glass</button>
+        <button class="chip" data-t="dark">Dark</button>
+        <button class="chip" data-t="blue">Blue</button>
+      </div>
+      <button class="btn" id="saveBtn">Save changes</button>
+      <button class="btn ghost" id="logoutBtn">Log out</button>
+      <p class="err" id="setMsg"></p>
+    </div>
+  </section>
+
+  <section id="chatView" class="hidden">
+    <div class="chathead glass">
+      <button class="icon" id="backBtn">←</button>
+      <span id="chatAv"></span>
+      <div><b id="chatName"></b><div id="chatStatus"></div></div>
+    </div>
+    <div id="msgs"></div>
+    <form id="sendForm" class="glass">
+      <button type="button" id="camBtn" title="Send photo">📷</button>
+      <input id="imgIn" type="file" accept="image/*" class="hidden">
+      <input id="msgIn" placeholder="Type a message" autocomplete="off">
+      <button type="submit">➤</button>
+    </form>
+  </section>
+
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
+  onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, setDoc, deleteDoc, collection, query, orderBy, onSnapshot,
+  addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAvxH50paoEuJ9FgzYY8VRye6DpQdESMQY",
+  authDomain: "infinity-chat-d7f68.firebaseapp.com",
+  projectId: "infinity-chat-d7f68",
+  messagingSenderId: "425458605087",
+  appId: "1:425458605087:web:7857813f1efa4b2077892a"
+};
+// Photos ke liye: cloudinary.com ka free account, phir yahan dono cheezein daalo
+const CLOUD = { name: "PASTE_CLOUD_NAME", preset: "PASTE_UPLOAD_PRESET" };
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = id => document.getElementById(id);
+const ms = t => (t && t.toMillis) ? t.toMillis() : 0;
+const fmt = n => new Date(n).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const online = u => Date.now() - ms(u.lastSeen) < 130000;
+const okImg = s => typeof s === "string" && s.startsWith("https://res.cloudinary.com/");
+let me = null, myDoc = {}, allUsers = [], peer = null, typing = false, chatId = null;
+let unsubUsers = null, unsubMsgs = null, unsubChat = null, lastTyped = 0, newPhoto = null;
+
+function show(view){
+  ["authView","homeView","setView","chatView"].forEach(v => $(v).classList.toggle("hidden", v !== view));
+}
+
+function setTheme(t){
+  document.body.dataset.theme = t;
+  try{ localStorage.setItem("ic-theme", t); }catch(e){}
+  document.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c.dataset.t === t));
+}
+let saved = "glass";
+try{ saved = localStorage.getItem("ic-theme") || "glass"; }catch(e){}
+setTheme(saved);
+document.querySelectorAll(".chip").forEach(c => c.onclick = () => setTheme(c.dataset.t));
+
+async function upload(file){
+  if(CLOUD.name.startsWith("PASTE")){ alert("Photo setup pending: code mein Cloudinary cloud name aur upload preset daalo."); return null; }
+  try{
+    const fd = new FormData();
+    fd.append("file", file); fd.append("upload_preset", CLOUD.preset);
+    const r = await fetch("https://api.cloudinary.com/v1_1/" + CLOUD.name + "/image/upload", { method: "POST", body: fd });
+    const j = await r.json();
+    return j.secure_url || null;
+  }catch(e){ alert("Upload failed. Check internet and Cloudinary settings."); return null; }
+}
+
+function avatar(u, cls){
+  const a = document.createElement("div");
+  a.className = "avatar " + (cls || "");
+  if(okImg(u.photo)){ const i = document.createElement("img"); i.src = u.photo; a.append(i); }
+  else a.textContent = (u.name || "?").charAt(0).toUpperCase();
+  if(online(u)){ const d = document.createElement("i"); d.className = "dot"; a.append(d); }
+  return a;
+}
+
+$("signupBtn").onclick = async () => {
+  const name = $("nameIn").value.trim();
+  if(!name){ $("authMsg").textContent = "Enter your name first."; return; }
+  try{
+    const c = await createUserWithEmailAndPassword(auth, $("emailIn").value.trim(), $("passIn").value);
+    await updateProfile(c.user, { displayName: name });
+    await setDoc(doc(db, "users", c.user.uid),
+      { uid: c.user.uid, name, email: c.user.email, bio: "", photo: "", lastSeen: serverTimestamp() });
+    $("hello").textContent = name;
+  }catch(e){ $("authMsg").textContent = e.code || e.message; }
+};
+
+$("loginBtn").onclick = async () => {
+  try{ await signInWithEmailAndPassword(auth, $("emailIn").value.trim(), $("passIn").value); }
+  catch(e){ $("authMsg").textContent = e.code || e.message; }
+};
+
+$("logoutBtn").onclick = () => signOut(auth);
+
+function beat(){
+  if(me && !document.hidden)
+    setDoc(doc(db, "users", me.uid), { lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
+}
+setInterval(beat, 60000);
+document.addEventListener("visibilitychange", beat);
+setInterval(() => { if(me){ renderUsers(); updateStatus(); } }, 30000);
+
+onAuthStateChanged(auth, user => {
+  me = user;
+  [unsubUsers, unsubMsgs, unsubChat].forEach(f => f && f());
+  unsubUsers = unsubMsgs = unsubChat = null;
+  if(!user){ show("authView"); return; }
+  $("authMsg").textContent = "";
+  $("hello").textContent = user.displayName || user.email;
+  show("homeView");
+  beat();
+  unsubUsers = onSnapshot(collection(db, "users"), snap => {
+    const all = snap.docs.map(d => d.data()).filter(u => u.uid && u.name);
+    myDoc = all.find(u => u.uid === me.uid) || {};
+    allUsers = all.filter(u => u.uid !== me.uid);
+    renderUsers(); updateStatus();
+  }, err => { $("users").textContent = err.code; });
+});
+
+$("search").oninput = renderUsers;
+
+function renderUsers(){
+  const q = $("search").value.toLowerCase();
+  const list = allUsers.filter(u => u.name.toLowerCase().includes(q));
+  const box = $("users");
+  box.replaceChildren();
+  if(!list.length){
+    const p = document.createElement("p");
+    p.className = "muted empty";
+    p.textContent = allUsers.length ? "No friend found." : "No friends yet. Ask a friend to create an account.";
+    box.append(p);
+    return;
+  }
+  list.forEach(u => {
+    const row = document.createElement("div");
+    row.className = "chat glass";
+    const info = document.createElement("div");
+    const nm = document.createElement("div");
+    nm.className = "name"; nm.textContent = u.name;
+    const sub = document.createElement("div");
+    sub.className = "muted";
+    sub.textContent = online(u) ? "online" : (u.bio || "Tap to chat");
+    info.append(nm, sub);
+    row.append(avatar(u), info);
+    row.onclick = () => openChat(u);
+    box.append(row);
+  });
+}
+
+function updateStatus(){
+  if(!peer || $("chatView").classList.contains("hidden")) return;
+  const u = allUsers.find(x => x.uid === peer.uid) || peer;
+  let t = "offline";
+  if(typing) t = "typing...";
+  else if(online(u)) t = "online";
+  else if(ms(u.lastSeen)) t = "last seen " + fmt(ms(u.lastSeen));
+  $("chatStatus").textContent = t;
+}
+
+function openChat(u){
+  peer = u; typing = false;
+  chatId = [me.uid, u.uid].sort().join("_");
+  $("chatName").textContent = u.name;
+  $("chatAv").replaceChildren(avatar(u, "sm"));
+  $("msgs").replaceChildren();
+  show("chatView");
+  updateStatus();
+  unsubMsgs = onSnapshot(query(collection(db, "chats", chatId, "messages"), orderBy("createdAt")), snap => {
+    const box = $("msgs");
+    box.replaceChildren();
+    snap.docs.forEach(d => {
+      const m = d.data(), mine = m.from === me.uid;
+      const el = document.createElement("div");
+      el.className = "msg " + (mine ? "mine" : "theirs");
+      if(m.type === "img" && okImg(m.url)){
+        const i = document.createElement("img");
+        i.src = m.url;
+        i.onload = () => { box.scrollTop = box.scrollHeight; };
+        el.append(i);
+      }else el.textContent = m.text || "";
+      const tm = document.createElement("small");
+      tm.textContent = fmt(ms(m.createdAt) || Date.now());
+      el.append(tm);
+      if(mine) el.onclick = () => { if(confirm("Delete this message?")) deleteDoc(d.ref); };
+      box.append(el);
+    });
+    box.scrollTop = box.scrollHeight;
+  });
+  unsubChat = onSnapshot(doc(db, "chats", chatId), s => {
+    const t = (s.data() || {})["t_" + u.uid] || 0;
+    typing = Date.now() - t < 4000;
+    updateStatus();
+    if(typing) setTimeout(() => { typing = Date.now() - t < 4000; updateStatus(); }, 4100);
+  });
+}
+
+$("backBtn").onclick = () => {
+  [unsubMsgs, unsubChat].forEach(f => f && f());
+  unsubMsgs = unsubChat = null; chatId = null; peer = null;
+  show("homeView");
+};
+
+$("msgIn").oninput = () => {
+  if(!chatId || Date.now() - lastTyped < 2000) return;
+  lastTyped = Date.now();
+  setDoc(doc(db, "chats", chatId), { ["t_" + me.uid]: Date.now() }, { merge: true }).catch(() => {});
+};
+
+$("sendForm").onsubmit = async e => {
+  e.preventDefault();
+  const text = $("msgIn").value.trim();
+  if(!text || !chatId) return;
+  $("msgIn").value = ""; lastTyped = 0;
+  try{
+    await addDoc(collection(db, "chats", chatId, "messages"),
+      { type: "text", text, from: me.uid, createdAt: serverTimestamp() });
+  }catch(err){ $("msgIn").value = text; }
+};
+
+$("camBtn").onclick = () => $("imgIn").click();
+$("imgIn").onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if(!f || !chatId) return;
+  const url = await upload(f);
+  if(url) addDoc(collection(db, "chats", chatId, "messages"),
+    { type: "img", url, from: me.uid, createdAt: serverTimestamp() });
+};
+
+function drawSetAv(){
+  $("setAv").replaceChildren(avatar({ name: $("setName").value || myDoc.name, photo: newPhoto || myDoc.photo }, "big"));
+}
+$("settingsBtn").onclick = () => {
+  $("setName").value = myDoc.name || me.displayName || "";
+  $("setBio").value = myDoc.bio || "";
+  $("setMsg").textContent = ""; newPhoto = null;
+  drawSetAv(); show("setView");
+};
+$("setBack").onclick = () => show("homeView");
+$("setAv").onclick = () => $("photoIn").click();
+$("photoIn").onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if(!f) return;
+  const url = await upload(f);
+  if(url){ newPhoto = url; drawSetAv(); }
+};
+$("saveBtn").onclick = async () => {
+  const name = $("setName").value.trim();
+  if(!name){ $("setMsg").textContent = "Name cannot be empty."; return; }
+  try{
+    await updateProfile(me, { displayName: name });
+    await setDoc(doc(db, "users", me.uid),
+      { name, bio: $("setBio").value.trim(), photo: newPhoto || myDoc.photo || "" }, { merge: true });
+    $("hello").textContent = name;
+    show("homeView");
+  }catch(e){ $("setMsg").textContent = e.code || e.message; }
+};
+</script>
+</body>
+  </html>
