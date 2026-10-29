@@ -65,10 +65,41 @@ label{display:block;font-size:13px;color:#91a7b7;margin:0 0 6px 2px}
 .tick{color:#ffffff88}.tick.seen{color:#35eaff}
 .typing::after{content:"";display:inline-block;width:1.4em;text-align:left;animation:dots 1.2s steps(1,end) infinite}
 @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+#splash{position:fixed;inset:0;z-index:99;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#070b12;transition:opacity .5s}
+#splash.out{opacity:0;pointer-events:none}
+#splash svg{filter:drop-shadow(0 0 8px #35eaff)}
+#splash path{fill:none;stroke:#35eaff;stroke-width:5;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:0}
+.quote{max-width:230px;padding:3px 8px;margin-bottom:6px;font-size:12px;background:#0003;border-left:3px solid #35eaff;border-radius:6px}
+.quote div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#cfe9f2}
+.rx{display:inline-block;margin-top:5px;padding:2px 9px;border-radius:12px;background:#ffffff1f;font-size:13px}
+#replyBar{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;margin-bottom:6px;font-size:13px;border-left:3px solid #35eaff}
+#replyBar div div{max-width:70vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#91a7b7}
+#replyX{background:none;border:0;color:#35eaff;font-size:18px}
+#sheet{position:fixed;inset:0;z-index:50;background:#0009;display:flex;align-items:flex-end;justify-content:center}
+.sheetbox{width:100%;max-width:480px;margin:0 12px 18px;padding:14px}
+#emojis{display:flex;justify-content:space-between;margin-bottom:10px}
+.em{width:46px;height:46px;border-radius:50%;border:1px solid #ffffff22;background:#ffffff10;font-size:23px}
+.em.on{border-color:#35eaff;background:#35eaff22}
+.sbtn{display:block;width:100%;padding:13px;margin-top:6px;border:0;border-radius:14px;background:#ffffff10;color:#fff;font-size:15px;text-align:left}
+.sbtn.danger{color:#ff8a9b}
+@media (prefers-reduced-motion:no-preference){
+  .enter{animation:enter .25s ease-out}
+  @keyframes enter{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+  #splash path{stroke-dashoffset:1;animation:draw 1.5s ease-out forwards}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  #splash .logo{animation:fadeup .8s .6s ease-out both}
+  @keyframes fadeup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  button:active{transform:scale(.96)}
+}
 @media (prefers-reduced-motion:no-preference){.msg{animation:pop .18s ease-out}@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
 </style>
 </head>
 <body>
+<div id="splash">
+  <svg viewBox="0 0 120 60" width="180" height="90"><path pathLength="1" d="M60 30C75 8 108 8 108 30C108 52 75 52 60 30C45 8 12 8 12 30C12 52 45 52 60 30Z"/></svg>
+  <div class="logo">INFINITY<span> CHAT</span></div>
+</div>
+<script>setTimeout(function(){var s=document.getElementById("splash");if(s){s.classList.add("out");setTimeout(function(){s.remove()},600)}},2000)</script>
 <div class="app">
 
   <section id="authView">
@@ -130,6 +161,7 @@ label{display:block;font-size:13px;color:#91a7b7;margin:0 0 6px 2px}
       <div><b id="chatName"></b><div id="chatStatus"></div></div>
     </div>
     <div id="msgs"></div>
+    <div id="replyBar" class="glass hidden"><div><b id="replyName"></b><div id="replyText"></div></div><button type="button" id="replyX">✕</button></div>
     <form id="sendForm" class="glass">
       <button type="button" id="camBtn" title="Send photo">📷</button>
       <input id="imgIn" type="file" accept="image/*" class="hidden">
@@ -140,12 +172,20 @@ label{display:block;font-size:13px;color:#91a7b7;margin:0 0 6px 2px}
 
 </div>
 
+<div id="sheet" class="hidden">
+  <div class="sheetbox glass">
+    <div id="emojis"></div>
+    <button class="sbtn" id="replyBtn" type="button">↩ Reply</button>
+    <button class="sbtn danger" id="delBtn" type="button">🗑 Delete</button>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  doc, setDoc, deleteDoc, collection, query, orderBy, limit, increment, onSnapshot,
+  doc, setDoc, updateDoc, deleteDoc, deleteField, collection, query, orderBy, limit, increment, onSnapshot,
   addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -175,6 +215,8 @@ const pairId = uid => [me.uid, uid].sort().join("_");
 
 function show(view){
   ["authView","homeView","setView","chatView"].forEach(v => $(v).classList.toggle("hidden", v !== view));
+  const el = $(view);
+  el.classList.remove("enter"); void el.offsetWidth; el.classList.add("enter");
 }
 
 function setTheme(t){
@@ -341,12 +383,35 @@ function renderMsgs(){
     const m = d.data(), mine = m.from === me.uid;
     const el = document.createElement("div");
     el.className = "msg " + (mine ? "mine" : "theirs");
+    if(m.replyTo){
+      const q = document.createElement("div");
+      q.className = "quote";
+      const qn = document.createElement("b");
+      qn.textContent = m.replyTo.from === me.uid ? "You" : (peer ? peer.name : "");
+      const qt = document.createElement("div");
+      qt.textContent = m.replyTo.text || "";
+      q.append(qn, qt);
+      el.append(q);
+    }
     if(m.type === "img" && okImg(m.url)){
       const i = document.createElement("img");
       i.src = m.url;
       i.onload = () => { box.scrollTop = box.scrollHeight; };
       el.append(i);
-    }else el.textContent = m.text || "";
+    }else{
+      const t = document.createElement("div");
+      t.textContent = m.text || "";
+      el.append(t);
+    }
+    const counts = {};
+    Object.values(m.reactions || {}).forEach(e => { counts[e] = (counts[e] || 0) + 1; });
+    const keys = Object.keys(counts);
+    if(keys.length){
+      const r = document.createElement("div");
+      r.className = "rx";
+      r.textContent = keys.map(e => e + (counts[e] > 1 ? " " + counts[e] : "")).join("  ");
+      el.append(r);
+    }
     const at = ms(m.createdAt);
     const tm = document.createElement("small");
     tm.textContent = fmt(at || Date.now()) + " ";
@@ -358,7 +423,7 @@ function renderMsgs(){
       tm.append(k);
     }
     el.append(tm);
-    if(mine) el.onclick = () => { if(confirm("Delete this message?")) deleteDoc(d.ref); };
+    el.onclick = () => openSheet(d, m, mine);
     box.append(el);
   });
   if(near) box.scrollTop = box.scrollHeight;
@@ -377,7 +442,7 @@ function touchChat(text){
 }
 
 function openChat(u){
-  peer = u; typing = false; peerReadMs = 0; msgDocs = [];
+  peer = u; typing = false; peerReadMs = 0; msgDocs = []; clearReply();
   chatId = pairId(u.uid);
   $("chatName").textContent = u.name;
   $("chatAv").replaceChildren(avatar(u, "sm"));
@@ -405,7 +470,7 @@ function openChat(u){
 
 $("backBtn").onclick = () => {
   [unsubMsgs, unsubChat].forEach(f => f && f());
-  unsubMsgs = unsubChat = null; chatId = null; peer = null;
+  unsubMsgs = unsubChat = null; chatId = null; peer = null; clearReply();
   show("homeView");
 };
 
@@ -421,8 +486,10 @@ $("sendForm").onsubmit = async e => {
   if(!text || !chatId) return;
   $("msgIn").value = ""; lastTyped = 0;
   try{
-    await addDoc(collection(db, "chats", chatId, "messages"),
-      { type: "text", text, from: me.uid, createdAt: serverTimestamp() });
+    const msg = { type: "text", text, from: me.uid, createdAt: serverTimestamp() };
+    if(replyingTo) msg.replyTo = replyingTo;
+    clearReply();
+    await addDoc(collection(db, "chats", chatId, "messages"), msg);
     touchChat(text);
   }catch(err){ $("msgIn").value = text; }
 };
@@ -439,6 +506,46 @@ $("imgIn").onchange = async e => {
     touchChat("📷 Photo");
   }
 };
+
+const EMOJIS = ["👍","❤️","😂","😮","😢","🙏"];
+let sheetMsg = null, replyingTo = null;
+
+function openSheet(d, m, mine){
+  sheetMsg = { d, m };
+  const row = $("emojis");
+  row.replaceChildren();
+  EMOJIS.forEach(e => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = e;
+    b.className = "em" + ((m.reactions || {})[me.uid] === e ? " on" : "");
+    b.onclick = () => { react(d, m, e); closeSheet(); };
+    row.append(b);
+  });
+  $("delBtn").classList.toggle("hidden", !mine);
+  $("sheet").classList.remove("hidden");
+}
+function closeSheet(){ $("sheet").classList.add("hidden"); }
+async function react(d, m, e){
+  const same = (m.reactions || {})[me.uid] === e;
+  try{ await updateDoc(d.ref, { ["reactions." + me.uid]: same ? deleteField() : e }); }catch(err){}
+}
+function clearReply(){
+  replyingTo = null;
+  $("replyBar").classList.add("hidden");
+}
+$("sheet").onclick = e => { if(e.target === $("sheet")) closeSheet(); };
+$("replyBtn").onclick = () => {
+  const m = sheetMsg.m;
+  replyingTo = { from: m.from, text: m.type === "img" ? "📷 Photo" : (m.text || "").slice(0, 60) };
+  $("replyName").textContent = m.from === me.uid ? "You" : (peer ? peer.name : "");
+  $("replyText").textContent = replyingTo.text;
+  $("replyBar").classList.remove("hidden");
+  closeSheet();
+  $("msgIn").focus();
+};
+$("delBtn").onclick = () => { deleteDoc(sheetMsg.d.ref); closeSheet(); };
+$("replyX").onclick = clearReply;
 
 function drawSetAv(){
   $("setAv").replaceChildren(avatar({ name: $("setName").value || myDoc.name, photo: newPhoto || myDoc.photo }, "big"));
