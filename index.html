@@ -57,6 +57,14 @@ header{display:flex;align-items:center;justify-content:space-between}
 .chip{flex:1;padding:12px;border-radius:14px;border:1px solid #ffffff22;background:#ffffff0d;color:#fff;font-size:14px}
 .chip.on{border-color:#35eaff;color:#35eaff}
 label{display:block;font-size:13px;color:#91a7b7;margin:0 0 6px 2px}
+.chat .grow{flex:1;min-width:0}
+.chat .muted{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side{text-align:right;flex-shrink:0}
+.time{font-size:11px;color:#91a7b7}
+.badge{display:inline-block;margin-top:6px;padding:3px 8px;border-radius:20px;background:#35eaff;color:#071019;font-size:11px;font-weight:bold}
+.tick{color:#ffffff88}.tick.seen{color:#35eaff}
+.typing::after{content:"";display:inline-block;width:1.4em;text-align:left;animation:dots 1.2s steps(1,end) infinite}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
 @media (prefers-reduced-motion:no-preference){.msg{animation:pop .18s ease-out}@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
 </style>
 </head>
@@ -136,7 +144,8 @@ label{display:block;font-size:13px;color:#91a7b7;margin:0 0 6px 2px}
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, setDoc, deleteDoc, collection, query, orderBy, onSnapshot,
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  doc, setDoc, deleteDoc, collection, query, orderBy, limit, increment, onSnapshot,
   addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -151,7 +160,9 @@ const CLOUD = { name: "PASTE_CLOUD_NAME", preset: "PASTE_UPLOAD_PRESET" };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+let db;
+try{ db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }); }
+catch(e){ db = getFirestore(app); }
 const $ = id => document.getElementById(id);
 const ms = t => (t && t.toMillis) ? t.toMillis() : 0;
 const fmt = n => new Date(n).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -159,6 +170,8 @@ const online = u => Date.now() - ms(u.lastSeen) < 130000;
 const okImg = s => typeof s === "string" && s.startsWith("https://res.cloudinary.com/");
 let me = null, myDoc = {}, allUsers = [], peer = null, typing = false, chatId = null;
 let unsubUsers = null, unsubMsgs = null, unsubChat = null, lastTyped = 0, newPhoto = null;
+let chatMeta = {}, metaUnsubs = {}, msgDocs = [], peerReadMs = 0;
+const pairId = uid => [me.uid, uid].sort().join("_");
 
 function show(view){
   ["authView","homeView","setView","chatView"].forEach(v => $(v).classList.toggle("hidden", v !== view));
@@ -218,13 +231,15 @@ function beat(){
     setDoc(doc(db, "users", me.uid), { lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
 }
 setInterval(beat, 60000);
-document.addEventListener("visibilitychange", beat);
+document.addEventListener("visibilitychange", () => { beat(); markRead(); });
 setInterval(() => { if(me){ renderUsers(); updateStatus(); } }, 30000);
 
 onAuthStateChanged(auth, user => {
   me = user;
   [unsubUsers, unsubMsgs, unsubChat].forEach(f => f && f());
   unsubUsers = unsubMsgs = unsubChat = null;
+  Object.values(metaUnsubs).forEach(f => f());
+  metaUnsubs = {}; chatMeta = {};
   if(!user){ show("authView"); return; }
   $("authMsg").textContent = "";
   $("hello").textContent = user.displayName || user.email;
@@ -234,15 +249,36 @@ onAuthStateChanged(auth, user => {
     const all = snap.docs.map(d => d.data()).filter(u => u.uid && u.name);
     myDoc = all.find(u => u.uid === me.uid) || {};
     allUsers = all.filter(u => u.uid !== me.uid);
-    renderUsers(); updateStatus();
+    syncMeta(); renderUsers(); updateStatus();
   }, err => { $("users").textContent = err.code; });
 });
 
 $("search").oninput = renderUsers;
 
+function syncMeta(){
+  allUsers.forEach(u => {
+    if(metaUnsubs[u.uid]) return;
+    metaUnsubs[u.uid] = onSnapshot(doc(db, "chats", pairId(u.uid)), s => {
+      chatMeta[u.uid] = s.data() || {};
+      renderUsers();
+    }, () => {});
+  });
+}
+
+function shortTime(n){
+  const d = new Date(n);
+  return d.toDateString() === new Date().toDateString()
+    ? fmt(n) : d.toLocaleDateString([], { day: "numeric", month: "short" });
+}
+
 function renderUsers(){
   const q = $("search").value.toLowerCase();
-  const list = allUsers.filter(u => u.name.toLowerCase().includes(q));
+  const meta = u => chatMeta[u.uid] || {};
+  const list = allUsers.filter(u => u.name.toLowerCase().includes(q))
+    .sort((a, b) => ms(meta(b).lastAt) - ms(meta(a).lastAt) || a.name.localeCompare(b.name));
+  let total = 0;
+  allUsers.forEach(u => { total += meta(u)["u_" + me.uid] || 0; });
+  document.title = (total ? "(" + total + ") " : "") + "Infinity Chat";
   const box = $("users");
   box.replaceChildren();
   if(!list.length){
@@ -253,16 +289,34 @@ function renderUsers(){
     return;
   }
   list.forEach(u => {
+    const m = meta(u), unread = m["u_" + me.uid] || 0;
     const row = document.createElement("div");
     row.className = "chat glass";
     const info = document.createElement("div");
+    info.className = "grow";
     const nm = document.createElement("div");
     nm.className = "name"; nm.textContent = u.name;
     const sub = document.createElement("div");
     sub.className = "muted";
-    sub.textContent = online(u) ? "online" : (u.bio || "Tap to chat");
+    sub.textContent = m.lastText ? (m.lastFrom === me.uid ? "You: " : "") + m.lastText
+      : (online(u) ? "online" : (u.bio || "Tap to chat"));
     info.append(nm, sub);
     row.append(avatar(u), info);
+    if(ms(m.lastAt) || unread){
+      const side = document.createElement("div");
+      side.className = "side";
+      const tm = document.createElement("div");
+      tm.className = "time";
+      tm.textContent = ms(m.lastAt) ? shortTime(ms(m.lastAt)) : "";
+      side.append(tm);
+      if(unread){
+        const b = document.createElement("span");
+        b.className = "badge";
+        b.textContent = unread > 99 ? "99+" : unread;
+        side.append(b);
+      }
+      row.append(side);
+    }
     row.onclick = () => openChat(u);
     box.append(row);
   });
@@ -272,47 +326,81 @@ function updateStatus(){
   if(!peer || $("chatView").classList.contains("hidden")) return;
   const u = allUsers.find(x => x.uid === peer.uid) || peer;
   let t = "offline";
-  if(typing) t = "typing...";
+  if(typing) t = "typing";
   else if(online(u)) t = "online";
   else if(ms(u.lastSeen)) t = "last seen " + fmt(ms(u.lastSeen));
   $("chatStatus").textContent = t;
+  $("chatStatus").className = typing ? "typing" : "";
+}
+
+function renderMsgs(){
+  const box = $("msgs");
+  const near = box.scrollHeight - box.scrollTop - box.clientHeight < 140;
+  box.replaceChildren();
+  msgDocs.forEach(d => {
+    const m = d.data(), mine = m.from === me.uid;
+    const el = document.createElement("div");
+    el.className = "msg " + (mine ? "mine" : "theirs");
+    if(m.type === "img" && okImg(m.url)){
+      const i = document.createElement("img");
+      i.src = m.url;
+      i.onload = () => { box.scrollTop = box.scrollHeight; };
+      el.append(i);
+    }else el.textContent = m.text || "";
+    const at = ms(m.createdAt);
+    const tm = document.createElement("small");
+    tm.textContent = fmt(at || Date.now()) + " ";
+    if(mine){
+      const seen = at && at <= peerReadMs;
+      const k = document.createElement("span");
+      k.className = "tick" + (seen ? " seen" : "");
+      k.textContent = seen ? "✓✓" : "✓";
+      tm.append(k);
+    }
+    el.append(tm);
+    if(mine) el.onclick = () => { if(confirm("Delete this message?")) deleteDoc(d.ref); };
+    box.append(el);
+  });
+  if(near) box.scrollTop = box.scrollHeight;
+}
+
+function markRead(){
+  if(!chatId || !me || document.hidden) return;
+  setDoc(doc(db, "chats", chatId), { ["u_" + me.uid]: 0, ["r_" + me.uid]: serverTimestamp() },
+    { merge: true }).catch(() => {});
+}
+
+function touchChat(text){
+  if(!chatId || !peer) return;
+  setDoc(doc(db, "chats", chatId), { lastText: text.slice(0, 60), lastFrom: me.uid,
+    lastAt: serverTimestamp(), ["u_" + peer.uid]: increment(1) }, { merge: true }).catch(() => {});
 }
 
 function openChat(u){
-  peer = u; typing = false;
-  chatId = [me.uid, u.uid].sort().join("_");
+  peer = u; typing = false; peerReadMs = 0; msgDocs = [];
+  chatId = pairId(u.uid);
   $("chatName").textContent = u.name;
   $("chatAv").replaceChildren(avatar(u, "sm"));
   $("msgs").replaceChildren();
   show("chatView");
   updateStatus();
-  unsubMsgs = onSnapshot(query(collection(db, "chats", chatId, "messages"), orderBy("createdAt")), snap => {
-    const box = $("msgs");
-    box.replaceChildren();
-    snap.docs.forEach(d => {
-      const m = d.data(), mine = m.from === me.uid;
-      const el = document.createElement("div");
-      el.className = "msg " + (mine ? "mine" : "theirs");
-      if(m.type === "img" && okImg(m.url)){
-        const i = document.createElement("img");
-        i.src = m.url;
-        i.onload = () => { box.scrollTop = box.scrollHeight; };
-        el.append(i);
-      }else el.textContent = m.text || "";
-      const tm = document.createElement("small");
-      tm.textContent = fmt(ms(m.createdAt) || Date.now());
-      el.append(tm);
-      if(mine) el.onclick = () => { if(confirm("Delete this message?")) deleteDoc(d.ref); };
-      box.append(el);
-    });
-    box.scrollTop = box.scrollHeight;
+  const q = query(collection(db, "chats", chatId, "messages"), orderBy("createdAt", "desc"), limit(50));
+  unsubMsgs = onSnapshot(q, snap => {
+    msgDocs = snap.docs.slice().reverse();
+    renderMsgs();
+    const last = msgDocs[msgDocs.length - 1];
+    if(last && last.data().from !== me.uid) markRead();
   });
   unsubChat = onSnapshot(doc(db, "chats", chatId), s => {
-    const t = (s.data() || {})["t_" + u.uid] || 0;
+    const d = s.data() || {};
+    const t = d["t_" + u.uid] || 0;
     typing = Date.now() - t < 4000;
     updateStatus();
     if(typing) setTimeout(() => { typing = Date.now() - t < 4000; updateStatus(); }, 4100);
+    const r = ms(d["r_" + u.uid]);
+    if(r !== peerReadMs){ peerReadMs = r; renderMsgs(); }
   });
+  markRead();
 }
 
 $("backBtn").onclick = () => {
@@ -335,6 +423,7 @@ $("sendForm").onsubmit = async e => {
   try{
     await addDoc(collection(db, "chats", chatId, "messages"),
       { type: "text", text, from: me.uid, createdAt: serverTimestamp() });
+    touchChat(text);
   }catch(err){ $("msgIn").value = text; }
 };
 
@@ -344,8 +433,11 @@ $("imgIn").onchange = async e => {
   e.target.value = "";
   if(!f || !chatId) return;
   const url = await upload(f);
-  if(url) addDoc(collection(db, "chats", chatId, "messages"),
-    { type: "img", url, from: me.uid, createdAt: serverTimestamp() });
+  if(url && chatId){
+    addDoc(collection(db, "chats", chatId, "messages"),
+      { type: "img", url, from: me.uid, createdAt: serverTimestamp() });
+    touchChat("📷 Photo");
+  }
 };
 
 function drawSetAv(){
