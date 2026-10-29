@@ -91,6 +91,28 @@ label{display:block;font-size:13px;color:#91a7b7;margin:0 0 6px 2px}
   @keyframes fadeup{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
   button:active{transform:scale(.96)}
 }
+.stories{display:flex;gap:14px;overflow-x:auto;padding:4px 2px 14px}
+.story{flex:0 0 auto;width:64px;text-align:center;font-size:12px;cursor:pointer}
+.story .avatar{margin:0 auto 6px}
+.story > div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.avatar.ring{border:2px solid #35eaff;box-shadow:0 0 12px #35eaff66}
+.plus{position:absolute;right:-5px;bottom:-5px;width:22px;height:22px;border-radius:50%;background:#35eaff;color:#071019;display:grid;place-items:center;font-size:15px;font-weight:bold;border:2px solid #0a121b}
+#stSheet{position:fixed;inset:0;z-index:50;background:#0009;display:flex;align-items:flex-end;justify-content:center}
+#viewer{position:fixed;inset:0;z-index:70;background:#000;display:flex;flex-direction:column}
+#vbars{display:flex;gap:4px;padding:12px 10px 6px}
+#vbars i{flex:1;height:3px;border-radius:3px;background:#ffffff40;overflow:hidden}
+#vbars i b{display:block;height:100%;width:0;background:#35eaff}
+#vbars i.done b{width:100%}
+#vbars i.run b{width:100%;transition:width 5s linear}
+#vhead{display:flex;align-items:center;gap:10px;padding:6px 14px}
+#vhead .grow{flex:1;min-width:0}
+#vwrap{flex:1;position:relative;display:flex;min-height:0}
+#vbody{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#vbody img{max-width:100%;max-height:100%;object-fit:contain}
+#vbody .txt{width:100%;height:100%;padding:30px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:bold;text-align:center;word-break:break-word}
+.vz{position:absolute;top:0;bottom:0}
+#vprev{left:0;width:35%}
+#vnext{right:0;width:65%}
 @media (prefers-reduced-motion:no-preference){.msg{animation:pop .18s ease-out}@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
 </style>
 </head>
@@ -124,6 +146,7 @@ label{display:block;font-size:13px;color:#91a7b7;margin:0 0 6px 2px}
       <h1 id="hello">Stay connected</h1>
       <p class="muted">Pick a friend to start chatting.</p>
     </div>
+    <div class="stories" id="stories"></div>
     <input id="search" placeholder="Search friends...">
     <div id="users"></div>
   </section>
@@ -180,12 +203,35 @@ label{display:block;font-size:13px;color:#91a7b7;margin:0 0 6px 2px}
   </div>
 </div>
 
+<div id="stSheet" class="hidden">
+  <div class="sheetbox glass">
+    <input id="stTxt" maxlength="140" placeholder="Type a status...">
+    <button class="sbtn" id="stText" type="button">✍ Post text status</button>
+    <button class="sbtn" id="stPhoto" type="button">📷 Photo status</button>
+  </div>
+</div>
+<input id="stImg" type="file" accept="image/*" class="hidden">
+<div id="viewer" class="hidden">
+  <div id="vbars"></div>
+  <div id="vhead">
+    <span id="vav"></span>
+    <div class="grow"><b id="vname"></b><div class="muted" id="vtime"></div></div>
+    <button class="icon hidden" id="vdel" type="button">🗑</button>
+    <button class="icon" id="vclose" type="button">✕</button>
+  </div>
+  <div id="vwrap">
+    <div id="vbody"></div>
+    <div class="vz" id="vprev"></div>
+    <div class="vz" id="vnext"></div>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  doc, setDoc, updateDoc, deleteDoc, deleteField, collection, query, orderBy, limit, increment, onSnapshot,
+  doc, setDoc, updateDoc, deleteDoc, deleteField, collection, query, where, orderBy, limit, increment, Timestamp, onSnapshot,
   addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -211,6 +257,7 @@ const okImg = s => typeof s === "string" && s.startsWith("https://res.cloudinary
 let me = null, myDoc = {}, allUsers = [], peer = null, typing = false, chatId = null;
 let unsubUsers = null, unsubMsgs = null, unsubChat = null, lastTyped = 0, newPhoto = null;
 let chatMeta = {}, metaUnsubs = {}, msgDocs = [], peerReadMs = 0;
+let unsubStatus = null, statuses = [], vList = [], vIdx = 0, vTimer = null;
 const pairId = uid => [me.uid, uid].sort().join("_");
 
 function show(view){
@@ -274,12 +321,13 @@ function beat(){
 }
 setInterval(beat, 60000);
 document.addEventListener("visibilitychange", () => { beat(); markRead(); });
-setInterval(() => { if(me){ renderUsers(); updateStatus(); } }, 30000);
+setInterval(() => { if(me){ renderUsers(); updateStatus(); renderStatus(); } }, 30000);
 
 onAuthStateChanged(auth, user => {
   me = user;
-  [unsubUsers, unsubMsgs, unsubChat].forEach(f => f && f());
-  unsubUsers = unsubMsgs = unsubChat = null;
+  [unsubUsers, unsubMsgs, unsubChat, unsubStatus].forEach(f => f && f());
+  unsubUsers = unsubMsgs = unsubChat = unsubStatus = null;
+  statuses = []; closeViewer();
   Object.values(metaUnsubs).forEach(f => f());
   metaUnsubs = {}; chatMeta = {};
   if(!user){ show("authView"); return; }
@@ -287,11 +335,16 @@ onAuthStateChanged(auth, user => {
   $("hello").textContent = user.displayName || user.email;
   show("homeView");
   beat();
+  unsubStatus = onSnapshot(query(collection(db, "statuses"),
+    where("createdAt", ">", Timestamp.fromMillis(Date.now() - 86400000)), orderBy("createdAt")), snap => {
+    statuses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderStatus();
+  }, () => {});
   unsubUsers = onSnapshot(collection(db, "users"), snap => {
     const all = snap.docs.map(d => d.data()).filter(u => u.uid && u.name);
     myDoc = all.find(u => u.uid === me.uid) || {};
     allUsers = all.filter(u => u.uid !== me.uid);
-    syncMeta(); renderUsers(); updateStatus();
+    syncMeta(); renderUsers(); updateStatus(); renderStatus();
   }, err => { $("users").textContent = err.code; });
 });
 
@@ -546,6 +599,134 @@ $("replyBtn").onclick = () => {
 };
 $("delBtn").onclick = () => { deleteDoc(sheetMsg.d.ref); closeSheet(); };
 $("replyX").onclick = clearReply;
+
+const STATUS_BG = ["linear-gradient(135deg,#0b3a9e,#35eaff)", "linear-gradient(135deg,#2f0b9e,#35a0ff)",
+  "linear-gradient(135deg,#0a2a43,#2f80ff)", "linear-gradient(135deg,#12354b,#3cffac)"];
+
+function activeStatuses(){
+  const now = Date.now();
+  return statuses.filter(s => now - (ms(s.createdAt) || now) < 86400000)
+    .sort((a, b) => (ms(a.createdAt) || now) - (ms(b.createdAt) || now));
+}
+
+function ago(at){
+  const m = Math.floor((Date.now() - at) / 60000);
+  return m < 1 ? "just now" : m < 60 ? m + " min ago" : Math.floor(m / 60) + " h ago";
+}
+
+function renderStatus(){
+  if(!me) return;
+  const row = $("stories");
+  row.replaceChildren();
+  const act = activeStatuses(), now = Date.now();
+  const mineList = act.filter(s => s.uid === me.uid);
+  const mine = document.createElement("div");
+  mine.className = "story";
+  const av = avatar({ name: myDoc.name || me.displayName || "Me", photo: myDoc.photo });
+  if(mineList.length) av.classList.add("ring");
+  const plus = document.createElement("span");
+  plus.className = "plus"; plus.textContent = "+";
+  plus.onclick = e => { e.stopPropagation(); openStSheet(); };
+  av.append(plus);
+  const lb = document.createElement("div");
+  lb.textContent = "My status";
+  mine.append(av, lb);
+  mine.onclick = () => mineList.length ? openViewer(me.uid) : openStSheet();
+  row.append(mine);
+  const last = {};
+  act.forEach(s => { if(s.uid !== me.uid) last[s.uid] = ms(s.createdAt) || now; });
+  Object.keys(last).sort((a, b) => last[b] - last[a]).forEach(uid => {
+    const u = allUsers.find(x => x.uid === uid);
+    if(!u) return;
+    const it = document.createElement("div");
+    it.className = "story";
+    const a = avatar(u);
+    a.classList.add("ring");
+    const n = document.createElement("div");
+    n.textContent = u.name;
+    it.append(a, n);
+    it.onclick = () => openViewer(uid);
+    row.append(it);
+  });
+}
+
+function openStSheet(){ $("stTxt").value = ""; $("stSheet").classList.remove("hidden"); }
+$("stSheet").onclick = e => { if(e.target === $("stSheet")) $("stSheet").classList.add("hidden"); };
+$("stText").onclick = () => {
+  const t = $("stTxt").value.trim();
+  if(!t) return;
+  $("stSheet").classList.add("hidden");
+  addDoc(collection(db, "statuses"), { uid: me.uid, type: "text", text: t,
+    bgi: Math.floor(Math.random() * STATUS_BG.length), createdAt: serverTimestamp() }).catch(() => {});
+};
+$("stPhoto").onclick = () => $("stImg").click();
+$("stImg").onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if(!f) return;
+  $("stSheet").classList.add("hidden");
+  const url = await upload(f);
+  if(url) addDoc(collection(db, "statuses"),
+    { uid: me.uid, type: "img", url, createdAt: serverTimestamp() }).catch(() => {});
+};
+
+function openViewer(uid){
+  vList = activeStatuses().filter(s => s.uid === uid);
+  if(!vList.length) return;
+  vIdx = 0;
+  $("viewer").classList.remove("hidden");
+  showStatus();
+}
+function showStatus(){
+  clearTimeout(vTimer);
+  const s = vList[vIdx];
+  const bars = $("vbars");
+  bars.replaceChildren();
+  vList.forEach((_, i) => {
+    const t = document.createElement("i");
+    t.append(document.createElement("b"));
+    if(i < vIdx) t.className = "done";
+    bars.append(t);
+  });
+  const cur = bars.children[vIdx];
+  void cur.offsetWidth;
+  cur.className = "run";
+  const mineS = s.uid === me.uid;
+  const u = mineS ? { name: myDoc.name || "Me", photo: myDoc.photo } : (allUsers.find(x => x.uid === s.uid) || { name: "Friend" });
+  $("vav").replaceChildren(avatar(u, "sm"));
+  $("vname").textContent = mineS ? "My status" : u.name;
+  $("vtime").textContent = ago(ms(s.createdAt) || Date.now());
+  $("vdel").classList.toggle("hidden", !mineS);
+  const body = $("vbody");
+  body.replaceChildren();
+  if(s.type === "img" && okImg(s.url)){
+    const i = document.createElement("img");
+    i.src = s.url;
+    body.append(i);
+  }else{
+    const t = document.createElement("div");
+    t.className = "txt";
+    t.style.background = STATUS_BG[s.bgi] || STATUS_BG[0];
+    t.textContent = s.text || "";
+    body.append(t);
+  }
+  vTimer = setTimeout(nextStatus, 5000);
+}
+function nextStatus(){ if(vIdx < vList.length - 1){ vIdx++; showStatus(); } else closeViewer(); }
+function prevStatus(){ if(vIdx > 0) vIdx--; showStatus(); }
+function closeViewer(){
+  clearTimeout(vTimer);
+  $("viewer").classList.add("hidden");
+  $("vbody").replaceChildren();
+}
+$("vnext").onclick = nextStatus;
+$("vprev").onclick = prevStatus;
+$("vclose").onclick = closeViewer;
+$("vdel").onclick = async () => {
+  const s = vList[vIdx];
+  closeViewer();
+  try{ await deleteDoc(doc(db, "statuses", s.id)); }catch(e){}
+};
 
 function drawSetAv(){
   $("setAv").replaceChildren(avatar({ name: $("setName").value || myDoc.name, photo: newPhoto || myDoc.photo }, "big"));
