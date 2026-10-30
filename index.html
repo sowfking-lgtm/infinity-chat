@@ -183,6 +183,7 @@ label b{color:var(--acc);margin-left:6px}
     <p class="muted">Your private space</p>
     <div class="glass box">
       <input id="nameIn" placeholder="Your name (for new account)">
+      <input id="inviteIn" placeholder="Invite code (for new account)" autocomplete="off">
       <input id="emailIn" type="email" placeholder="Email">
       <input id="passIn" type="password" placeholder="Password (6+ characters)">
       <button class="btn" id="loginBtn">Log in</button>
@@ -318,9 +319,9 @@ label b{color:var(--acc);margin-left:6px}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
-  onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+  onAuthStateChanged, signOut, updateProfile, deleteUser } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  doc, setDoc, updateDoc, deleteDoc, deleteField, collection, query, where, orderBy, limit, increment, Timestamp, onSnapshot,
+  doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, query, where, orderBy, limit, increment, Timestamp, onSnapshot,
   addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -386,15 +387,23 @@ function avatar(u, cls){
 }
 
 $("signupBtn").onclick = async () => {
-  const name = $("nameIn").value.trim();
+  const name = $("nameIn").value.trim(), code = $("inviteIn").value.trim();
   if(!name){ $("authMsg").textContent = "Enter your name first."; return; }
+  if(!code){ $("authMsg").textContent = "Enter the invite code."; return; }
+  signingUp = true;
+  let c = null, msg = "";
   try{
-    const c = await createUserWithEmailAndPassword(auth, $("emailIn").value.trim(), $("passIn").value);
-    await updateProfile(c.user, { displayName: name });
+    c = await createUserWithEmailAndPassword(auth, $("emailIn").value.trim(), $("passIn").value);
     await setDoc(doc(db, "users", c.user.uid),
-      { uid: c.user.uid, name, email: c.user.email, bio: "", photo: "", lastSeen: serverTimestamp() });
-    $("hello").textContent = name;
-  }catch(e){ $("authMsg").textContent = e.code || e.message; }
+      { uid: c.user.uid, name, email: c.user.email, bio: "", photo: "", invite: code, lastSeen: serverTimestamp() });
+    await updateProfile(c.user, { displayName: name });
+  }catch(e){
+    msg = e.code === "permission-denied" ? "Wrong invite code." : (e.code || e.message);
+    if(c){ try{ await deleteUser(c.user); }catch(_){ try{ await signOut(auth); }catch(__){} } }
+  }
+  signingUp = false;
+  await begin(auth.currentUser);
+  if(msg) $("authMsg").textContent = msg;
 };
 
 $("loginBtn").onclick = async () => {
@@ -412,7 +421,10 @@ setInterval(beat, 60000);
 document.addEventListener("visibilitychange", () => { beat(); markRead(); });
 setInterval(() => { if(me){ renderUsers(); updateStatus(); renderStatus(); } }, 30000);
 
-onAuthStateChanged(auth, user => {
+let signingUp = false;
+onAuthStateChanged(auth, user => { if(!signingUp) begin(user); });
+
+async function begin(user){
   me = user;
   [unsubUsers, unsubMsgs, unsubChat, unsubStatus].forEach(f => f && f());
   unsubUsers = unsubMsgs = unsubChat = unsubStatus = null;
@@ -420,6 +432,15 @@ onAuthStateChanged(auth, user => {
   Object.values(metaUnsubs).forEach(f => f());
   metaUnsubs = {}; chatMeta = {};
   if(!user){ show("authView"); return; }
+  try{
+    const s = await getDoc(doc(db, "users", user.uid));
+    if(!s.exists()){
+      me = null; show("authView");
+      $("authMsg").textContent = "This account has no access. Create a new account with the invite code.";
+      signOut(auth);
+      return;
+    }
+  }catch(e){}
   $("authMsg").textContent = "";
   $("hello").textContent = user.displayName || user.email;
   show("homeView");
@@ -435,7 +456,7 @@ onAuthStateChanged(auth, user => {
     allUsers = all.filter(u => u.uid !== me.uid);
     syncMeta(); renderUsers(); updateStatus(); renderStatus();
   }, err => { $("users").textContent = err.code; });
-});
+}
 
 $("search").oninput = renderUsers;
 
