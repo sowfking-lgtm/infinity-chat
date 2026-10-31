@@ -166,6 +166,13 @@ label b{color:var(--acc);margin-left:6px}
 #pvWrap{flex:1;overflow:auto;display:flex;min-height:0}
 #pvWrap img{margin:auto;max-width:100%;max-height:100%;object-fit:contain}
 #pvWrap img.zoomed{max-width:none;max-height:none;width:220%}
+.tg{width:42px;height:24px;border-radius:12px;background:#ffffff26;position:relative;flex-shrink:0;font-style:normal}
+.tg::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:left .2s}
+.tg.on{background:var(--acc)}
+.tg.on::after{left:21px;background:#04121a}
+.badge.mute{background:#ffffff40;color:#fff}
+.chathead > div,#chatAv{cursor:pointer}
+.heroav .avatar.gav{margin:0}
 @media (prefers-reduced-motion:no-preference){.msg{animation:pop .18s ease-out}@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}}
 </style>
 </head>
@@ -185,6 +192,10 @@ label b{color:var(--acc);margin-left:6px}
 <symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></symbol>
 <symbol id="i-users" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
 <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+<symbol id="i-block" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></symbol>
+<symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></symbol>
+<symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-seen" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m22 4-10 10-3-3"/></symbol>
 </defs></svg>
 <div id="splash">
   <svg viewBox="0 0 120 60" width="180" height="90"><path pathLength="1" d="M60 30C75 8 108 8 108 30C108 52 75 52 60 30C45 8 12 8 12 30C12 52 45 52 60 30Z"/></svg>
@@ -243,6 +254,8 @@ label b{color:var(--acc);margin-left:6px}
       <p class="err" id="setMsg"></p>
     </div>
     <div class="glass list">
+      <button class="row" id="tgOnline" type="button"><svg class="ic"><use href="#i-eye"/></svg><span>Show last seen and online</span><i class="tg"></i></button>
+      <button class="row" id="tgSeen" type="button"><svg class="ic"><use href="#i-seen"/></svg><span>Send seen ticks</span><i class="tg"></i></button>
       <button class="row" id="openSkin" type="button"><svg class="ic"><use href="#i-palette"/></svg><span>Appearance and skins</span><svg class="ic chev"><use href="#i-chev"/></svg></button>
       <button class="row danger" id="logoutBtn" type="button"><svg class="ic"><use href="#i-logout"/></svg><span>Log out</span></button>
     </div>
@@ -280,6 +293,28 @@ label b{color:var(--acc);margin-left:6px}
       <p class="hint">Blur and transparency work on the Glass and Blue themes.</p>
       <input id="wallIn" type="file" accept="image/*" class="hidden">
     </div>
+  </section>
+
+  <section id="infoView" class="hidden">
+    <header>
+      <button class="icon" id="infoBack" aria-label="Back"><svg class="ic"><use href="#i-back"/></svg></button>
+      <b>Info</b>
+      <span style="width:43px"></span>
+    </header>
+    <div class="hero glass">
+      <div class="banner"></div>
+      <div class="heroav" id="infoAv"></div>
+      <div class="heroname" id="infoName"></div>
+      <div class="muted" id="infoSub"></div>
+    </div>
+    <div class="glass list" id="infoList"></div>
+    <div class="glass box hidden" id="infoPick">
+      <label>Add members</label>
+      <div id="aPick"></div>
+      <button class="btn" id="aAdd" style="margin-top:10px">Add selected</button>
+      <p class="err" id="aMsg"></p>
+    </div>
+    <input id="gPhotoIn" type="file" accept="image/*" class="hidden">
   </section>
 
   <section id="groupView" class="hidden">
@@ -359,7 +394,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,
   onAuthStateChanged, signOut, updateProfile, deleteUser } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  doc, getDoc, setDoc, updateDoc, deleteDoc, deleteField, collection, query, where, orderBy, limit, increment, Timestamp, onSnapshot,
+  doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove, deleteDoc, deleteField, collection, query, where, orderBy, limit, increment, Timestamp, onSnapshot,
   addDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -380,7 +415,7 @@ catch(e){ db = getFirestore(app); }
 const $ = id => document.getElementById(id);
 const ms = t => (t && t.toMillis) ? t.toMillis() : 0;
 const fmt = n => new Date(n).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-const online = u => Date.now() - ms(u.lastSeen) < 130000;
+const online = u => !u.hideOnline && Date.now() - ms(u.lastSeen) < 130000;
 const okImg = s => typeof s === "string" && s.startsWith("https://res.cloudinary.com/");
 let me = null, myDoc = {}, allUsers = [], peer = null, typing = false, chatId = null;
 let chatCol = "chats", curGroup = null, typerName = "";
@@ -388,10 +423,12 @@ let unsubUsers = null, unsubMsgs = null, unsubChat = null, lastTyped = 0, newPho
 let chatMeta = {}, metaUnsubs = {}, msgDocs = [], peerReadMs = 0;
 let unsubStatus = null, statuses = [], vList = [], vIdx = 0, vTimer = null;
 let groups = [], unsubGroups = null, pvUrl = "";
+let blocked = new Set(), unsubPrefs = null, muted = new Set();
+try{ muted = new Set(JSON.parse(localStorage.getItem("ic-mute") || "[]")); }catch(e){}
 const pairId = uid => [me.uid, uid].sort().join("_");
 
 function show(view){
-  ["authView","homeView","setView","skinView","groupView","chatView"].forEach(v => $(v).classList.toggle("hidden", v !== view));
+  ["authView","homeView","setView","skinView","groupView","infoView","chatView"].forEach(v => $(v).classList.toggle("hidden", v !== view));
   const el = $(view);
   el.classList.remove("enter"); void el.offsetWidth; el.classList.add("enter");
 }
@@ -454,7 +491,7 @@ $("loginBtn").onclick = async () => {
 $("logoutBtn").onclick = () => signOut(auth);
 
 function beat(){
-  if(me && !document.hidden)
+  if(me && !document.hidden && !myDoc.hideOnline)
     setDoc(doc(db, "users", me.uid), { lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
 }
 setInterval(beat, 60000);
@@ -466,9 +503,9 @@ onAuthStateChanged(auth, user => { if(!signingUp) begin(user); });
 
 async function begin(user){
   me = user;
-  [unsubUsers, unsubMsgs, unsubChat, unsubStatus, unsubGroups].forEach(f => f && f());
-  unsubUsers = unsubMsgs = unsubChat = unsubStatus = unsubGroups = null;
-  statuses = []; groups = []; closeViewer();
+  [unsubUsers, unsubMsgs, unsubChat, unsubStatus, unsubGroups, unsubPrefs].forEach(f => f && f());
+  unsubUsers = unsubMsgs = unsubChat = unsubStatus = unsubGroups = unsubPrefs = null;
+  statuses = []; groups = []; blocked = new Set(); closeViewer();
   Object.values(metaUnsubs).forEach(f => f());
   metaUnsubs = {}; chatMeta = {};
   if(!user){ show("authView"); return; }
@@ -485,6 +522,12 @@ async function begin(user){
   $("hello").textContent = user.displayName || user.email;
   show("homeView");
   beat();
+  unsubPrefs = onSnapshot(doc(db, "users", user.uid, "private", "prefs"), s => {
+    blocked = new Set((s.data() || {}).blocked || []);
+    renderUsers(); renderStatus();
+    if(chatId) renderMsgs();
+    if(!$("infoView").classList.contains("hidden")) renderInfo();
+  }, () => {});
   unsubGroups = onSnapshot(query(collection(db, "groups"), where("members", "array-contains", user.uid)), snap => {
     groups = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderUsers();
@@ -498,7 +541,7 @@ async function begin(user){
     const all = snap.docs.map(d => d.data()).filter(u => u.uid && u.name);
     myDoc = all.find(u => u.uid === me.uid) || {};
     allUsers = all.filter(u => u.uid !== me.uid);
-    syncMeta(); renderUsers(); updateStatus(); renderStatus();
+    syncMeta(); renderUsers(); updateStatus(); renderStatus(); renderPrivacy();
   }, err => { $("users").textContent = err.code; });
 }
 
@@ -528,8 +571,8 @@ function renderUsers(){
     ...groups.filter(g => (g.name || "").toLowerCase().includes(q)).map(g => ({ k: "g", g, m: g, name: g.name || "Group" }))
   ].sort((a, b) => ms(b.m.lastAt) - ms(a.m.lastAt) || a.name.localeCompare(b.name));
   let total = 0;
-  allUsers.forEach(u => { total += meta(u)["u_" + me.uid] || 0; });
-  groups.forEach(g => { total += g["u_" + me.uid] || 0; });
+  allUsers.forEach(u => { if(!blocked.has(u.uid) && !muted.has("u:" + u.uid)) total += meta(u)["u_" + me.uid] || 0; });
+  groups.forEach(g => { if(!muted.has("g:" + g.id)) total += g["u_" + me.uid] || 0; });
   document.title = (total ? "(" + total + ") " : "") + "Infinity Chat";
   const box = $("users");
   box.replaceChildren();
@@ -541,7 +584,7 @@ function renderUsers(){
     return;
   }
   items.forEach(it => {
-    const m = it.m, unread = m["u_" + me.uid] || 0, isG = it.k === "g";
+    const isG = it.k === "g", m = it.m, bl = !isG && blocked.has(it.u.uid), mu = muted.has(isG ? "g:" + it.g.id : "u:" + it.u.uid), unread = bl ? 0 : (m["u_" + me.uid] || 0);
     const row = document.createElement("div");
     row.className = "chat glass";
     const info = document.createElement("div");
@@ -551,6 +594,7 @@ function renderUsers(){
     const sub = document.createElement("div");
     sub.className = "muted";
     if(isG) sub.textContent = m.lastText ? (m.lastFrom === me.uid ? "You" : (m.lastFromName || "Someone")) + ": " + m.lastText : it.g.members.length + " members";
+    else if(bl) sub.textContent = "Blocked";
     else sub.textContent = m.lastText ? (m.lastFrom === me.uid ? "You: " : "") + m.lastText : (online(it.u) ? "online" : (it.u.bio || "Tap to chat"));
     info.append(nm, sub);
     row.append(isG ? groupAvatar(it.g) : avatar(it.u), info);
@@ -563,7 +607,7 @@ function renderUsers(){
       side.append(tm);
       if(unread){
         const b = document.createElement("span");
-        b.className = "badge";
+        b.className = "badge" + (mu ? " mute" : "");
         b.textContent = unread > 99 ? "99+" : unread;
         side.append(b);
       }
@@ -586,7 +630,7 @@ function updateStatus(){
   let t = "offline";
   if(typing) t = "typing";
   else if(online(u)) t = "online";
-  else if(ms(u.lastSeen)) t = "last seen " + fmt(ms(u.lastSeen));
+  else if(ms(u.lastSeen) && !u.hideOnline) t = "last seen " + fmt(ms(u.lastSeen));
   $("chatStatus").textContent = t;
   $("chatStatus").className = typing ? "typing" : "";
 }
@@ -597,6 +641,7 @@ function renderMsgs(){
   box.replaceChildren();
   msgDocs.forEach(d => {
     const m = d.data(), mine = m.from === me.uid;
+    if(blocked.has(m.from)) return;
     const el = document.createElement("div");
     el.className = "msg " + (mine ? "mine" : "theirs");
     if(curGroup && !mine){
@@ -655,8 +700,9 @@ function renderMsgs(){
 
 function markRead(){
   if(!chatId || !me || document.hidden) return;
-  setDoc(doc(db, chatCol, chatId), { ["u_" + me.uid]: 0, ["r_" + me.uid]: serverTimestamp() },
-    { merge: true }).catch(() => {});
+  const p = { ["u_" + me.uid]: 0 };
+  if(!myDoc.hideSeen) p["r_" + me.uid] = serverTimestamp();
+  setDoc(doc(db, chatCol, chatId), p, { merge: true }).catch(() => {});
 }
 
 function touchChat(text){
@@ -842,7 +888,7 @@ function renderStatus(){
   mine.onclick = () => mineList.length ? openViewer(me.uid) : openStSheet();
   row.append(mine);
   const last = {};
-  act.forEach(s => { if(s.uid !== me.uid) last[s.uid] = ms(s.createdAt) || now; });
+  act.forEach(s => { if(s.uid !== me.uid && !blocked.has(s.uid)) last[s.uid] = ms(s.createdAt) || now; });
   Object.keys(last).sort((a, b) => last[b] - last[a]).forEach(uid => {
     const u = allUsers.find(x => x.uid === uid);
     if(!u) return;
@@ -1024,29 +1070,29 @@ function svgIcon(name){
 function groupAvatar(g, cls){
   const a = document.createElement("div");
   a.className = "avatar gav " + (cls || "");
-  a.append(svgIcon("users"));
+  if(okImg(g.photo)){ const i = document.createElement("img"); i.src = g.photo; a.append(i); }
+  else a.append(svgIcon("users"));
   return a;
 }
 
 let gSel = new Set();
-function renderPick(){
-  const box = $("gPick");
+function renderPick(box = $("gPick"), users = allUsers, set = gSel){
   box.replaceChildren();
-  if(!allUsers.length){
+  if(!users.length){
     const p = document.createElement("p");
-    p.className = "muted"; p.textContent = "No friends yet.";
+    p.className = "muted"; p.textContent = "No friends to show.";
     box.append(p);
     return;
   }
-  allUsers.forEach(u => {
+  users.forEach(u => {
     const row = document.createElement("div");
-    row.className = "chat glass pick" + (gSel.has(u.uid) ? " on" : "");
+    row.className = "chat glass pick" + (set.has(u.uid) ? " on" : "");
     const nm = document.createElement("div");
     nm.className = "name grow"; nm.textContent = u.name;
     const ck = document.createElement("span");
     ck.className = "check";
     row.append(avatar(u, "sm"), nm, ck);
-    row.onclick = () => { gSel.has(u.uid) ? gSel.delete(u.uid) : gSel.add(u.uid); row.classList.toggle("on"); };
+    row.onclick = () => { set.has(u.uid) ? set.delete(u.uid) : set.add(u.uid); row.classList.toggle("on"); };
     box.append(row);
   });
 }
@@ -1090,6 +1136,105 @@ $("pvSave").onclick = async () => {
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }catch(e){ window.open(pvUrl, "_blank"); }
 };
+
+function infoRow(icon, text, fn, danger, tg){
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "row" + (danger ? " danger" : "");
+  const s = document.createElement("span");
+  s.textContent = text;
+  b.append(svgIcon(icon), s);
+  if(tg !== undefined){
+    const t = document.createElement("i");
+    t.className = "tg" + (tg ? " on" : "");
+    b.append(t);
+  }
+  b.onclick = fn;
+  return b;
+}
+function renderInfo(){
+  if(!chatId || (!curGroup && !peer)) return;
+  const list = $("infoList");
+  list.replaceChildren();
+  $("infoPick").classList.add("hidden");
+  const key = curGroup ? "g:" + chatId : "u:" + peer.uid;
+  $("infoAv").replaceChildren(curGroup ? groupAvatar(curGroup, "big") : avatar(peer, "big"));
+  $("infoName").textContent = curGroup ? curGroup.name : peer.name;
+  $("infoSub").textContent = curGroup ? curGroup.members.length + " members" : (peer.bio || "");
+  list.append(infoRow("bell", "Mute notifications", () => toggleMute(key), false, muted.has(key)));
+  if(!curGroup){
+    const b = blocked.has(peer.uid);
+    list.append(infoRow("block", (b ? "Unblock " : "Block ") + peer.name, () => setBlocked(peer.uid, !b), !b));
+    return;
+  }
+  curGroup.members.forEach(id => {
+    const u = id === me.uid ? { name: myName(), photo: myDoc.photo } : (allUsers.find(x => x.uid === id) || { name: "Friend" });
+    const r = document.createElement("div");
+    r.className = "row";
+    const n = document.createElement("span");
+    n.textContent = (id === me.uid ? "You" : u.name) + (id === curGroup.createdBy ? " (admin)" : "");
+    r.append(avatar(u, "sm"), n);
+    list.append(r);
+  });
+  if(curGroup.createdBy === me.uid){
+    list.append(infoRow("users", "Add members", showAddPick));
+    list.append(infoRow("camera", "Change group photo", () => $("gPhotoIn").click()));
+  }
+  list.append(infoRow("logout", "Leave group", leaveGroup, true));
+}
+function openInfo(){ if(!chatId) return; renderInfo(); show("infoView"); }
+function toggleMute(key){
+  muted.has(key) ? muted.delete(key) : muted.add(key);
+  try{ localStorage.setItem("ic-mute", JSON.stringify([...muted])); }catch(e){}
+  renderInfo(); renderUsers();
+}
+function setBlocked(uid, on){
+  setDoc(doc(db, "users", me.uid, "private", "prefs"),
+    { blocked: on ? arrayUnion(uid) : arrayRemove(uid) }, { merge: true }).catch(() => {});
+}
+function leaveGroup(){
+  if(!confirm("Leave this group?")) return;
+  updateDoc(doc(db, "groups", chatId), { members: arrayRemove(me.uid) })
+    .then(() => $("backBtn").click()).catch(() => {});
+}
+let aSel = new Set();
+function showAddPick(){
+  aSel = new Set();
+  const left = allUsers.filter(u => !curGroup.members.includes(u.uid));
+  renderPick($("aPick"), left, aSel);
+  $("aMsg").textContent = left.length ? "" : "All your friends are already in this group.";
+  $("infoPick").classList.remove("hidden");
+}
+$("aAdd").onclick = async () => {
+  if(!aSel.size) return;
+  try{
+    await updateDoc(doc(db, "groups", chatId), { members: arrayUnion(...aSel) });
+    curGroup.members = [...curGroup.members, ...aSel];
+    renderInfo();
+  }catch(e){ $("aMsg").textContent = e.code || e.message; }
+};
+$("gPhotoIn").onchange = async e => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if(!f) return;
+  const url = await upload(f);
+  if(!url) return;
+  try{
+    await updateDoc(doc(db, "groups", chatId), { photo: url });
+    curGroup.photo = url;
+    $("chatAv").replaceChildren(groupAvatar(curGroup, "sm"));
+    renderInfo();
+  }catch(err){}
+};
+$("infoBack").onclick = () => show("chatView");
+$("chatAv").onclick = openInfo;
+document.querySelector(".chathead > div").onclick = openInfo;
+
+function renderPrivacy(){
+  $("tgOnline").querySelector(".tg").classList.toggle("on", !myDoc.hideOnline);
+  $("tgSeen").querySelector(".tg").classList.toggle("on", !myDoc.hideSeen);
+}
+$("tgOnline").onclick = () => updateDoc(doc(db, "users", me.uid), { hideOnline: !myDoc.hideOnline }).catch(() => {});
+$("tgSeen").onclick = () => updateDoc(doc(db, "users", me.uid), { hideSeen: !myDoc.hideSeen }).catch(() => {});
 
 function drawSetAv(){
   $("setAv").replaceChildren(avatar({ name: $("setName").value || myDoc.name, photo: newPhoto || myDoc.photo }, "big"));
